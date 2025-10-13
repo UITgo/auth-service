@@ -7,6 +7,7 @@ import { User } from "../user/user.schema";
 import { RegisterDto } from "./dto/register.dto";
 import { LoginDto } from "./dto/login.dto";
 import {VerifyOtpDto} from "./dto/verifyotp.dto";
+import { ResendOtpDto } from "./dto/resend-otp.dto";
 
 @Injectable()
 export class AuthService {
@@ -89,5 +90,22 @@ export class AuthService {
         await user.save();
 
         return { accessToken, refreshToken, name: user.name, phone: user.phone, isDriver: user.isDriver, avatar: user.avatar};
+    }
+
+    async resendOtp(RegisterDto: ResendOtpDto) {
+        const { phone } = RegisterDto;
+        const user = await this.userModel.findOne({phone});
+        if (!user) {
+            throw new BadRequestException('User not found');
+        }
+        if (user.isPhoneVerified) {
+            throw new BadRequestException('Phone number already verified');
+        }
+        const otpcode = Math.floor(10000 + Math.random() * 90000).toString();
+        const otpcode_expiry = new Date(Date.now() + 10 * 60 * 1000);
+        user.otpcode = otpcode;
+        user.otpcode_expiry = otpcode_expiry;
+        await user.save();
+        return {message: 'OTP code resent successfully'};
     }
 }
