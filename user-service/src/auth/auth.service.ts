@@ -59,5 +59,35 @@ export class AuthService {
         await user.save();
         return {message: 'Phone number verified successfully'};
     }
-}
 
+    private createAccessToken(payload: any) {
+        return this.jwtService.sign(payload, { expiresIn: '15m' });
+    }
+
+    private createRefreshToken(payload: any) {
+        return this.jwtService.sign(payload, { expiresIn: '7d' });
+    }
+
+    async login(LoginDto: LoginDto) {
+        const { phone, password } = LoginDto;
+        const user = await this.userModel.findOne({phone});
+        if (!user) {
+            throw new BadRequestException('User not found');
+        }
+        if (!user.isPhoneVerified) {
+            throw new UnauthorizedException('Phone number not verified');
+        }
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            throw new UnauthorizedException('Invalid password');
+        }
+        const accessToken = this.createAccessToken({ id: user._id });
+        const refreshToken = this.createRefreshToken({ id: user._id });
+    
+        user.refreshToken = refreshToken;
+        user.isActive = true;
+        await user.save();
+
+        return { accessToken, refreshToken, name: user.name, phone: user.phone, isDriver: user.isDriver, avatar: user.avatar};
+    }
+}
