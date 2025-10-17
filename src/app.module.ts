@@ -12,7 +12,7 @@ import { AuthModule } from './auth/auth.module';
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
         uri: configService.get<string>('DB_URL'),
-        dbName: 'UserService',
+        dbName: 'auth',
       }),
       inject: [ConfigService],
     }),

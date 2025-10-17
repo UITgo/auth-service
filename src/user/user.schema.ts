@@ -16,9 +16,6 @@ export class User extends Document {
     refreshToken?: string;
 
     @Prop()
-    avatar?: string;
-
-    @Prop()
     otpcode?: string;
 
     @Prop()
@@ -29,9 +26,6 @@ export class User extends Document {
 
     @Prop({default: false})
     isDriver: boolean;
-
-    @Prop({default: false})
-    isActive: boolean;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
