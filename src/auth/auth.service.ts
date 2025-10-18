@@ -8,12 +8,14 @@ import { RegisterDto } from "./dto/register.dto";
 import { LoginDto } from "./dto/login.dto";
 import {VerifyOtpDto} from "./dto/verifyotp.dto";
 import { ResendOtpDto } from "./dto/resend-otp.dto";
-
+import { ConfigService } from "@nestjs/config";
+import { RefreshTokenDto } from "./dto/refreshtoken.dto";
 @Injectable()
 export class AuthService {
     constructor(
         @InjectModel(User.name) private userModel: Model<User>,
-        private jwtService: JwtService
+        private jwtService: JwtService,
+        private readonly configService: ConfigService
     ) {}
 
     async register(RegisterDto: RegisterDto) { 
@@ -61,11 +63,17 @@ export class AuthService {
     }
 
     private createAccessToken(payload: any) {
-        return this.jwtService.sign(payload, { expiresIn: '15m' });
+        return this.jwtService.sign(payload, {
+        secret: this.configService.get<string>('JWT_SECRET'),
+        expiresIn: '15m',
+        });
     }
 
     private createRefreshToken(payload: any) {
-        return this.jwtService.sign(payload, { expiresIn: '7d' });
+        return this.jwtService.sign(payload, {
+            secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+            expiresIn: '7d',
+        });
     }
 
     async login(LoginDto: LoginDto) {
@@ -105,5 +113,22 @@ export class AuthService {
         user.otpcode_expiry = otpcode_expiry;
         await user.save();
         return {message: 'OTP code resent successfully'};
+    }
+
+    async refreshToken(oldRefreshToken: string) {
+        try {
+            const payload = this.jwtService.verify(oldRefreshToken, {secret: this.configService.get('JWT_REFRESH_SECRET')});
+            const user = await this.userModel.findById(payload.id);
+            if (!user || user.refreshToken !== oldRefreshToken) {
+                throw new UnauthorizedException('Invalid refresh token');
+            }
+            const newAccessToken = this.createAccessToken({ id: user._id });
+            const newRefreshToken = this.createRefreshToken({ id: user._id });
+            user.refreshToken = newRefreshToken;
+            await user.save();
+            return { accessToken: newAccessToken, refreshToken: newRefreshToken };
+        } catch (error) {
+            throw new UnauthorizedException('Invalid refresh token');
+        }
     }
 }

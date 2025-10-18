@@ -4,6 +4,7 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { VerifyOtpDto } from './dto/verifyotp.dto';
 import { ResendOtpDto } from './dto/resend-otp.dto';
+import { RefreshTokenDto } from './dto/refreshtoken.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -27,5 +28,10 @@ export class AuthController {
     @Post('resend-otp')
     async resendOtp(@Body() resendOtpDto: ResendOtpDto) {
         return this.authService.resendOtp(resendOtpDto);
+    }
+
+    @Post('refresh-token')
+    async refreshToken(@Body() refreshTokenDto: RefreshTokenDto) {
+        return this.authService.refreshToken(refreshTokenDto.refreshToken);
     }
 }
