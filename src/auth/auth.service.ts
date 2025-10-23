@@ -19,7 +19,7 @@ export class AuthService {
     ) {}
 
     async register(RegisterDto: RegisterDto) { 
-        const { phone, name, password, isDriver } = RegisterDto;
+        const { phone, password, isDriver } = RegisterDto;
         const existingPhone = await this.userModel.findOne({phone});
         if (existingPhone) {
             throw new BadRequestException('Phone number already exists');
@@ -31,7 +31,6 @@ export class AuthService {
 
         const newUser = new this.userModel({
             phone,
-            name: name,
             password: hashedPassword,
             otpcode: otpcode,
             otpcode_expiry: otpcode_expiry,
@@ -95,7 +94,7 @@ export class AuthService {
         user.refreshToken = refreshToken;
         await user.save();
 
-        return { accessToken, refreshToken, name: user.name, phone: user.phone, isDriver: user.isDriver};
+        return { accessToken, refreshToken, phone: user.phone, isDriver: user.isDriver};
     }
 
     async resendOtp(RegisterDto: ResendOtpDto) {
