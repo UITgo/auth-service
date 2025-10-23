@@ -114,11 +114,11 @@ export class AuthService {
         return {message: 'OTP code resent successfully'};
     }
 
-    async refreshToken(oldRefreshToken: string) {
+    async refreshToken(RefreshTokenDto: RefreshTokenDto) {
         try {
-            const payload = this.jwtService.verify(oldRefreshToken, {secret: this.configService.get('JWT_REFRESH_SECRET')});
+            const payload = this.jwtService.verify(RefreshTokenDto.refreshToken, {secret: this.configService.get('JWT_REFRESH_SECRET')});
             const user = await this.userModel.findById(payload.id);
-            if (!user || user.refreshToken !== oldRefreshToken) {
+            if (!user || user.refreshToken !== RefreshTokenDto.refreshToken) {
                 throw new UnauthorizedException('Invalid refresh token');
             }
             const newAccessToken = this.createAccessToken({ id: user._id });
