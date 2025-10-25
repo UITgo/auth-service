@@ -1,8 +1,8 @@
-import { IsPhoneNumber, IsNotEmpty } from 'class-validator';
+import { IsEmail, IsNotEmpty } from 'class-validator';
 
 export class LoginDto {
-    @IsPhoneNumber('VN', { message: 'Phone number must be valid' })
-    phone: string;
+    @IsEmail()
+    email: string;
 
     @IsNotEmpty({ message: 'Password must not be empty' })
     password: string;

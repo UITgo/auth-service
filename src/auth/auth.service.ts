@@ -1,133 +1,182 @@
 import { BadRequestException, Injectable, UnauthorizedException } from "@nestjs/common";
 import { InjectModel } from "@nestjs/mongoose";
-import { JwtService } from "@nestjs/jwt";
 import { Model } from "mongoose";
 import * as bcrypt from "bcrypt";
 import { User } from "../user/user.schema";
 import { RegisterDto } from "./dto/register.dto";
 import { LoginDto } from "./dto/login.dto";
-import {VerifyOtpDto} from "./dto/verifyotp.dto";
-import { ResendOtpDto } from "./dto/resend-otp.dto";
+import { VerifyOtpDto } from "./dto/verifyotp.dto";
 import { ConfigService } from "@nestjs/config";
-import { RefreshTokenDto } from "./dto/refreshtoken.dto";
+import { CognitoUserPool, CognitoUser, CognitoUserAttribute, AuthenticationDetails, CognitoRefreshToken } from 'amazon-cognito-identity-js';
+
 @Injectable()
 export class AuthService {
+    private userPool: CognitoUserPool;
+    
     constructor(
         @InjectModel(User.name) private userModel: Model<User>,
-        private jwtService: JwtService,
-        private readonly configService: ConfigService
-    ) {}
-
-    async register(RegisterDto: RegisterDto) { 
-        const { phone, password, isDriver } = RegisterDto;
-        const existingPhone = await this.userModel.findOne({phone});
-        if (existingPhone) {
-            throw new BadRequestException('Phone number already exists');
-        }
-
-        const hashedPassword = await bcrypt.hash(password, 10);
-        const otpcode = Math.floor(10000 + Math.random() * 90000).toString();
-        const otpcode_expiry = new Date(Date.now() + 10 * 60 * 1000);
-
-        const newUser = new this.userModel({
-            phone,
-            password: hashedPassword,
-            otpcode: otpcode,
-            otpcode_expiry: otpcode_expiry,
-            isPhoneVerified: false,
-            isDriver: isDriver
-        });
-        await newUser.save();
-        return {message: 'User registered successfully, please verify your phone number'};
-    }
-
-    async verifyOtp(VerifyOtpDto: VerifyOtpDto) {
-        const { phone, otpcode } = VerifyOtpDto;
-        const user = await this.userModel.findOne({phone});
-        if (!user) {
-            throw new BadRequestException('User not found');
-        }
-        if (user.isPhoneVerified) {
-            throw new BadRequestException('Phone number already verified');
-        }
-        if (user.otpcode !== otpcode || new Date() > user.otpcode_expiry!) {
-            throw new BadRequestException('Invalid OTP code or OTP has expired');
-        }
-
-        user.isPhoneVerified = true;
-        user.otpcode = undefined;
-        user.otpcode_expiry = undefined;
-        await user.save();
-        return {message: 'Phone number verified successfully'};
-    }
-
-    private createAccessToken(payload: any) {
-        return this.jwtService.sign(payload, {
-        secret: this.configService.get<string>('JWT_SECRET'),
-        expiresIn: '15m',
+        private configService: ConfigService
+    ) {
+        this.userPool = new CognitoUserPool({
+            UserPoolId: this.configService.get<string>('USER_POOL_ID')!,
+            ClientId: this.configService.get<string>('CLIENT_ID')!,
         });
     }
 
-    private createRefreshToken(payload: any) {
-        return this.jwtService.sign(payload, {
-            secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
-            expiresIn: '7d',
+    async register(registerDto: RegisterDto) { 
+        const { email, phone, password, isDriver } = registerDto;
+        const existingUser = await this.userModel.findOne({ email });
+        if (existingUser) {
+            throw new BadRequestException('Email already exists');
+        }
+        const attributeList = [
+            new CognitoUserAttribute({ Name: 'email', Value: email })
+        ];
+
+        return new Promise((resolve, reject) => {
+            this.userPool.signUp(email, password, attributeList, [], async (err, result) => {
+                if (err) {
+                    return reject(new BadRequestException(err.message || err));
+                }
+            
+                const newUser = new this.userModel({
+                    email,
+                    phone,
+                    password: await bcrypt.hash(password, 10),
+                    isEmailVerified: false,
+                    isDriver,
+                });
+                await newUser.save();
+
+                resolve({ 
+                    message: 'User registered successfully. Please check your email for verification code.',
+                    email: email
+                });
+            });
         });
     }
 
-    async login(LoginDto: LoginDto) {
-        const { phone, password } = LoginDto;
-        const user = await this.userModel.findOne({phone});
+    async verifyOtp(verifyOtpDto: VerifyOtpDto) {
+        const { email, otpcode } = verifyOtpDto;
+        const user = await this.userModel.findOne({ email });
         if (!user) {
             throw new BadRequestException('User not found');
         }
-        if (!user.isPhoneVerified) {
-            throw new UnauthorizedException('Phone number not verified');
-        }
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) {
-            throw new UnauthorizedException('Invalid password');
-        }
-        const accessToken = this.createAccessToken({ id: user._id });
-        const refreshToken = this.createRefreshToken({ id: user._id });
-    
-        user.refreshToken = refreshToken;
-        await user.save();
+        const cognitoUser = new CognitoUser({ 
+            Username: email, 
+            Pool: this.userPool 
+        });
+        return new Promise((resolve, reject) => {
+            cognitoUser.confirmRegistration(otpcode, true, async (err, result) => {
+                if (err) {
+                    return reject(new BadRequestException(err.message || 'Invalid verification code'));
+                }
+                user.isEmailVerified = true;
+                await user.save();
 
-        return { accessToken, refreshToken, phone: user.phone, isDriver: user.isDriver};
+                resolve({ 
+                    message: 'Email verified successfully',
+                    verified: true 
+                });
+            });
+        });
     }
 
-    async resendOtp(RegisterDto: ResendOtpDto) {
-        const { phone } = RegisterDto;
-        const user = await this.userModel.findOne({phone});
+    async login(loginDto: LoginDto) {
+        const { email, password } = loginDto;
+        const user = await this.userModel.findOne({ email });
+        if (!user) {
+            throw new UnauthorizedException('Invalid credentials');
+        }
+        if (!user.isEmailVerified) {
+            throw new UnauthorizedException('Please verify your email first');
+        }
+        const cognitoUser = new CognitoUser({ 
+            Username: email, 
+            Pool: this.userPool 
+        });
+        
+        const authDetails = new AuthenticationDetails({ 
+            Username: email, 
+            Password: password 
+        });
+
+        return new Promise((resolve, reject) => {
+            cognitoUser.authenticateUser(authDetails, {
+                onSuccess: async (result) => {
+                    const accessToken = result.getAccessToken().getJwtToken();
+                    const idToken = result.getIdToken().getJwtToken();
+                    const refreshToken = result.getRefreshToken().getToken();
+
+                    resolve({ 
+                        accessToken,
+                        idToken,
+                        refreshToken,
+                        user: {
+                            email: user.email,
+                            isDriver: user.isDriver,
+                            isEmailVerified: user.isEmailVerified
+                        }
+                    });
+                },
+                onFailure: (err) => {
+                    reject(new UnauthorizedException(err.message || 'Login failed'));
+                },
+            });
+        });
+    }
+
+    async resendOtp(email: string) {
+        const user = await this.userModel.findOne({ email });
         if (!user) {
             throw new BadRequestException('User not found');
         }
-        if (user.isPhoneVerified) {
-            throw new BadRequestException('Phone number already verified');
+
+        if (user.isEmailVerified) {
+            throw new BadRequestException('Email already verified');
         }
-        const otpcode = Math.floor(10000 + Math.random() * 90000).toString();
-        const otpcode_expiry = new Date(Date.now() + 10 * 60 * 1000);
-        user.otpcode = otpcode;
-        user.otpcode_expiry = otpcode_expiry;
-        await user.save();
-        return {message: 'OTP code resent successfully'};
+
+        const cognitoUser = new CognitoUser({ 
+            Username: email, 
+            Pool: this.userPool 
+        });
+
+        return new Promise((resolve, reject) => {
+            cognitoUser.resendConfirmationCode((err, result) => {
+                if (err) {
+                    return reject(new BadRequestException(err.message || 'Failed to resend code'));
+                }
+                resolve({ 
+                    message: 'Verification code resent successfully. Please check your email.',
+                    email: email
+                });
+            });
+        });
     }
 
-    async refreshToken(RefreshTokenDto: RefreshTokenDto) {
-        try {
-            const payload = this.jwtService.verify(RefreshTokenDto.refreshToken, {secret: this.configService.get('JWT_REFRESH_SECRET')});
-            const user = await this.userModel.findById(payload.id);
-            if (!user || user.refreshToken !== RefreshTokenDto.refreshToken) {
-                throw new UnauthorizedException('Invalid refresh token');
+    async refreshToken(refreshToken: string) {
+    return new Promise((resolve, reject) => {
+        const cognitoUser = new CognitoUser({
+            Username: '', 
+            Pool: this.userPool
+        });
+        const RefreshToken = new CognitoRefreshToken({ 
+            RefreshToken: refreshToken 
+        });
+
+        cognitoUser.refreshSession(RefreshToken, (err, session) => {
+            if (err) {
+                return reject(new UnauthorizedException('Refresh token expired or invalid'));
             }
-            const newAccessToken = this.createAccessToken({ id: user._id });
-            const newRefreshToken = this.createRefreshToken({ id: user._id });
-            user.refreshToken = newRefreshToken;
-            await user.save();
-            return { accessToken: newAccessToken, refreshToken: newRefreshToken };
-        } catch (error) {
-            throw new UnauthorizedException('Invalid refresh token');
-        }
-    }
+
+            const newAccessToken = session.getAccessToken().getJwtToken();
+            const newIdToken = session.getIdToken().getJwtToken();
+
+            resolve({
+                accessToken: newAccessToken,
+                idToken: newIdToken,
+            });
+        });
+    });
+}
 }

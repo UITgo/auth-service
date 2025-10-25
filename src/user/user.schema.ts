@@ -3,6 +3,8 @@ import {Document} from 'mongoose';
 
 @Schema()
 export class User extends Document {
+    @Prop({required: true, unique: true})
+    email: string;
     
     @Prop({required: true, unique: true})
     phone: string;
@@ -10,17 +12,8 @@ export class User extends Document {
     @Prop({required: true})
     password: string;
 
-    @Prop()
-    refreshToken?: string;
-
-    @Prop()
-    otpcode?: string;
-
-    @Prop()
-    otpcode_expiry?: Date;
-
     @Prop({default: false})
-    isPhoneVerified: boolean;
+    isEmailVerified: boolean;
 
     @Prop({default: false})
     isDriver: boolean;
