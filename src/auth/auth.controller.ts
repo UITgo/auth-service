@@ -1,10 +1,10 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Post } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { VerifyOtpDto } from './dto/verifyotp.dto';
 
-@Controller('auth')
+@Controller('v1/auth')
 export class AuthController {
     constructor(private authService: AuthService) { }
 
@@ -24,12 +24,18 @@ export class AuthController {
     }
 
     @Post('resend-otp')
-    async resendOtp(@Body('email') email:string) {
+    async resendOtp(@Body('email') email: string) {
         return this.authService.resendOtp(email);
     }
 
+
     @Post('refresh')
-    async refresh(@Body('refreshToken') refreshToken: string) {
-        return this.authService.refreshToken(refreshToken);
+    refresh(@Body() body: { refreshToken: string; email: string }) {
+        return this.authService.refreshToken(body.refreshToken, body.email);
+    }
+
+    @Get('me')
+    me(@Headers('authorization') authz?: string) {
+        return this.authService.me(authz);
     }
 }
