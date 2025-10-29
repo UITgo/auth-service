@@ -1,8 +1,18 @@
 FROM node:20-alpine
 WORKDIR /src/app
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 COPY . .
-COPY .env .env
+
+ARG DB_URL
+ARG USER_POOL_ID
+ARG CLIENT_ID
+ARG REGION
+
+ENV DB_URL=$DB_URL
+ENV USER_POOL_ID=$USER_POOL_ID
+ENV CLIENT_ID=$CLIENT_ID
+ENV REGION=$REGION
+
 EXPOSE 3000
-CMD ["npm", "run", "start:dev"]
+CMD ["npm", "run", "start:prod"]
