@@ -79,12 +79,13 @@ jobs:
 
       - name: Deploy new ECS revision
         run: |
-          echo "Deploying new revision..."
+          CLUSTER_ARN="${{ secrets.ECS_CLUSTER_ARN }}"  
+          CLUSTER_NAME=$(basename "$CLUSTER_ARN")
+
+          echo "Deploying new revision to cluster $CLUSTER_NAME..."
 
           aws ecs update-service \
-            --cluster microservices-cluster \
+            --cluster $CLUSTER_NAME \
             --service auth-service \
             --task-definition ${{ steps.taskdef.outputs.new_revision }} \
             --force-new-deployment
-
-          echo "Deployment started!"
